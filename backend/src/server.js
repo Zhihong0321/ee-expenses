@@ -84,11 +84,39 @@ app.get('/api/categories', (req, res) => {
 });
 
 // Get current user info
-app.get('/api/me', requireApiAuth, (req, res) => {
-  res.json({
-    userId: req.userId,
-    user: req.user
-  });
+app.get('/api/me', requireApiAuth, async (req, res) => {
+  try {
+    // Start with JWT user data
+    const userData = { ...req.user };
+    
+    // Try to fetch additional user info from database (profile picture, etc.)
+    try {
+      const userResult = await db.query(
+        'SELECT profile_picture, name, email, access_level FROM "user" WHERE bubble_id = $1 LIMIT 1',
+        [req.userId]
+      );
+      
+      if (userResult.rows.length > 0) {
+        const dbUser = userResult.rows[0];
+        // Merge DB data with JWT data (JWT takes precedence for most fields)
+        userData.profile_picture = userData.profile_picture || dbUser.profile_picture;
+        userData.name = userData.name || dbUser.name;
+        userData.email = userData.email || dbUser.email;
+        userData.access_level = dbUser.access_level;
+      }
+    } catch (dbError) {
+      // If DB query fails, still return JWT data
+      console.log('Could not fetch additional user data from DB:', dbError.message);
+    }
+    
+    res.json({
+      userId: req.userId,
+      user: userData
+    });
+  } catch (error) {
+    console.error('Error in /api/me:', error);
+    res.status(500).json({ error: 'Failed to get user info' });
+  }
 });
 
 // Logout endpoint

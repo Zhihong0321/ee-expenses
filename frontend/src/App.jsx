@@ -581,13 +581,39 @@ function App() {
             </div>
             
             {/* User Info & Logout - Desktop */}
-            <div className="hidden md:flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-3">
               {currentUser && (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <User className="w-4 h-4" />
-                  <span>{currentUser.name || currentUser.phone}</span>
+                <div className="flex items-center gap-3">
+                  {/* Profile Picture */}
+                  {currentUser.profilePicture || currentUser.profile_picture ? (
+                    <img
+                      src={currentUser.profilePicture || currentUser.profile_picture}
+                      alt="Profile"
+                      className="w-9 h-9 rounded-full object-cover border-2 border-gray-200"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <div 
+                    className={`w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center border-2 border-gray-200 ${currentUser.profilePicture || currentUser.profile_picture ? 'hidden' : 'flex'}`}
+                  >
+                    <User className="w-5 h-5" />
+                  </div>
+                  
+                  {/* User Name */}
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm font-medium text-gray-900">
+                      {currentUser.name || currentUser.phone || 'User'}
+                    </span>
+                    {currentUser.role && (
+                      <span className="text-xs text-gray-500 capitalize">{currentUser.role}</span>
+                    )}
+                  </div>
                 </div>
               )}
+              <div className="h-6 w-px bg-gray-200 mx-1" />
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-1.5 text-gray-600 hover:text-red-600 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 transition"
@@ -613,9 +639,31 @@ function App() {
             {/* User Info */}
             {currentUser && (
               <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-                <div className="flex items-center gap-2 text-sm text-gray-700">
-                  <User className="w-4 h-4" />
-                  <span className="font-medium">{currentUser.name || currentUser.phone}</span>
+                <div className="flex items-center gap-3">
+                  {/* Profile Picture */}
+                  {currentUser.profilePicture || currentUser.profile_picture ? (
+                    <img
+                      src={currentUser.profilePicture || currentUser.profile_picture}
+                      alt="Profile"
+                      className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                    />
+                  ) : null}
+                  <div 
+                    className={`w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center border-2 border-gray-200 ${currentUser.profilePicture || currentUser.profile_picture ? 'hidden' : 'flex'}`}
+                  >
+                    <User className="w-5 h-5" />
+                  </div>
+                  
+                  <div className="flex flex-col">
+                    <span className="font-medium text-gray-900">{currentUser.name || currentUser.phone || 'User'}</span>
+                    {currentUser.role && (
+                      <span className="text-xs text-gray-500 capitalize">{currentUser.role}</span>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
