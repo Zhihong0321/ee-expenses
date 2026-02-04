@@ -89,31 +89,41 @@ app.get('/api/me', requireApiAuth, async (req, res) => {
     // JWT data from auth hub
     const jwtUser = req.user;
     
-    // Fetch user + agent name from database
+    // Fetch user from database
     let dbUser = null;
     let agentName = null;
     let profilePic = null;
     
     try {
-      // Get user with linked agent info
+      // Step 1: Get user data
       const userResult = await db.query(
-        `SELECT u.profile_picture, u.email, u.access_level, u.linked_agent_profile, a.name as agent_name
-         FROM "user" u
-         LEFT JOIN agent a ON a.bubble_id = u.linked_agent_profile
-         WHERE u.bubble_id = $1
-         LIMIT 1`,
+        'SELECT profile_picture, email, access_level, linked_agent_profile FROM "user" WHERE bubble_id = $1 LIMIT 1',
         [req.userId]
       );
       
       if (userResult.rows.length > 0) {
         dbUser = userResult.rows[0];
-        agentName = dbUser.agent_name;
         
-        // Fix profile picture URL - add https: if starts with //
+        // Fix profile picture URL
         if (dbUser.profile_picture) {
           profilePic = dbUser.profile_picture.startsWith('//') 
             ? 'https:' + dbUser.profile_picture 
             : dbUser.profile_picture;
+        }
+        
+        // Step 2: Get agent name separately
+        if (dbUser.linked_agent_profile) {
+          try {
+            const agentResult = await db.query(
+              'SELECT name FROM agent WHERE bubble_id = $1 LIMIT 1',
+              [dbUser.linked_agent_profile]
+            );
+            if (agentResult.rows.length > 0) {
+              agentName = agentResult.rows[0].name;
+            }
+          } catch (agentErr) {
+            console.log('Agent query error:', agentErr.message);
+          }
         }
       }
     } catch (dbError) {
@@ -123,13 +133,11 @@ app.get('/api/me', requireApiAuth, async (req, res) => {
     // Build user data
     const userData = {
       userId: req.userId,
-      // Use agent name if available, then JWT name, then email
       name: agentName || jwtUser.name || dbUser?.email || 'User',
       phone: jwtUser.phone || null,
       email: jwtUser.email || dbUser?.email || null,
       role: jwtUser.role || null,
       isAdmin: jwtUser.isAdmin || false,
-      // Profile picture with fixed URL
       profile_picture: profilePic,
       access_level: dbUser?.access_level || null
     };
