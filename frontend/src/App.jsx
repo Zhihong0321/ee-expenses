@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Upload, FileText, DollarSign, Clock, AlertCircle, CheckCircle, 
   ArrowUp, Shield, AlertTriangle, BarChart3, Trash2, Eye,
-  XCircle, Loader2, Image as ImageIcon, Menu, X, ChevronLeft
+  XCircle, Loader2, Image as ImageIcon, Menu, X, LogOut, User
 } from 'lucide-react';
 import Dropzone from 'react-dropzone';
 import axios from 'axios';
@@ -11,7 +11,10 @@ import AdminVerificationPage from './AdminVerificationPage';
 // Use relative URLs - works in both local dev and production (Railway)
 const API_BASE = '/api';
 const API_IMAGE_BASE = '';
-const USER_ID = 'demo-user-1'; // In production, get from parent app
+const AUTH_URL = 'https://auth.atap.solar';
+
+// Configure axios to send credentials (cookies)
+axios.defaults.withCredentials = true;
 
 function App() {
   const [receipts, setReceipts] = useState([]);
@@ -26,26 +29,65 @@ function App() {
   const [showReceiptDetail, setShowReceiptDetail] = useState(null);
   const [runningTamperCheck, setRunningTamperCheck] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
-  // Load data on mount
+  // Check auth on mount
   useEffect(() => {
-    loadReceipts();
-    loadExpenses();
-    loadCategories();
-    loadAnalytics();
+    checkAuth();
   }, []);
+
+  // Load data when auth is confirmed
+  useEffect(() => {
+    if (currentUser) {
+      loadReceipts();
+      loadExpenses();
+      loadCategories();
+      loadAnalytics();
+    }
+  }, [currentUser]);
 
   // Close mobile menu when view changes
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [currentView]);
 
+  const checkAuth = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/me`);
+      setCurrentUser(response.data.user);
+      setAuthChecked(true);
+    } catch (error) {
+      if (error.response?.status === 401) {
+        // Redirect to auth hub
+        const returnTo = encodeURIComponent(window.location.href);
+        window.location.href = `${AUTH_URL}/?return_to=${returnTo}`;
+      } else {
+        console.error('Auth check failed:', error);
+        setAuthChecked(true);
+      }
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await axios.post(`${API_BASE}/logout`);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+    // Redirect to auth hub logout
+    window.location.href = `${AUTH_URL}/auth/logout`;
+  };
+
   const loadReceipts = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE}/receipts/${USER_ID}`);
+      const response = await axios.get(`${API_BASE}/receipts`);
       setReceipts(response.data.receipts);
     } catch (error) {
+      if (error.response?.status === 401) {
+        checkAuth();
+      }
       console.error('Error loading receipts:', error);
     } finally {
       setLoading(false);
@@ -54,9 +96,12 @@ function App() {
 
   const loadExpenses = async () => {
     try {
-      const response = await axios.get(`${API_BASE}/expenses/${USER_ID}`);
+      const response = await axios.get(`${API_BASE}/expenses`);
       setExpenses(response.data.expenses);
     } catch (error) {
+      if (error.response?.status === 401) {
+        checkAuth();
+      }
       console.error('Error loading expenses:', error);
     }
   };
@@ -72,9 +117,12 @@ function App() {
 
   const loadAnalytics = async () => {
     try {
-      const response = await axios.get(`${API_BASE}/analytics/spending/${USER_ID}?period=month`);
+      const response = await axios.get(`${API_BASE}/analytics/spending?period=month`);
       setAnalytics(response.data);
     } catch (error) {
+      if (error.response?.status === 401) {
+        checkAuth();
+      }
       console.error('Error loading analytics:', error);
     }
   };
@@ -89,7 +137,6 @@ function App() {
       for (const file of files) {
         const formData = new FormData();
         formData.append('receipt', file);
-        formData.append('userId', USER_ID);
 
         try {
           const response = await axios.post(`${API_BASE}/receipts/upload`, formData, {
@@ -118,6 +165,9 @@ function App() {
                 existingDate: errorData.existingData?.date
               });
             }
+          } else if (uploadError.response?.status === 401) {
+            checkAuth();
+            return;
           } else {
             throw uploadError;
           }
@@ -149,6 +199,10 @@ function App() {
       await loadReceipts();
       alert('Tamper check completed!');
     } catch (error) {
+      if (error.response?.status === 401) {
+        checkAuth();
+        return;
+      }
       console.error('Tamper check error:', error);
       alert('Error running tamper check: ' + error.message);
     } finally {
@@ -187,7 +241,6 @@ function App() {
 
     try {
       await axios.post(`${API_BASE}/expenses/submit`, {
-        userId: USER_ID,
         receiptIds: selectedReceipts,
         category,
         notes
@@ -197,6 +250,10 @@ function App() {
       await loadExpenses();
       setCurrentView('expenses');
     } catch (error) {
+      if (error.response?.status === 401) {
+        checkAuth();
+        return;
+      }
       console.error('Submit error:', error);
       const errorMsg = error.response?.data?.error || error.message;
       alert('Error submitting expense: ' + errorMsg);
@@ -492,11 +549,23 @@ function App() {
     { id: 'shoebox', label: 'Shoebox', count: unsubmittedReceipts.length, icon: FileText },
     { id: 'expenses', label: 'Claims', count: expenses.length, icon: DollarSign },
     { id: 'analytics', label: 'Analytics', count: null, icon: BarChart3 },
-    { id: 'admin', label: 'Admin', count: null, icon: Shield },
+    ...(currentUser?.isAdmin || currentUser?.role === 'admin' ? [{ id: 'admin', label: 'Admin', count: null, icon: Shield }] : []),
   ];
 
   if (currentView === 'admin') {
     return <AdminVerificationPage />;
+  }
+
+  // Show loading while checking auth
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-10 h-10 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -511,30 +580,22 @@ function App() {
               <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Digital Receipt Shoebox</p>
             </div>
             
-            {/* Desktop Navigation */}
-            <nav className="hidden md:flex gap-2">
-              {navItems.map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => setCurrentView(item.id)}
-                  className={`px-3 lg:px-4 py-2 rounded-lg font-medium transition text-sm lg:text-base ${
-                    currentView === item.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  <item.icon className="w-4 h-4 inline mr-1.5" />
-                  {item.label}
-                  {item.count !== null && (
-                    <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${
-                      currentView === item.id ? 'bg-white/20' : 'bg-gray-200'
-                    }`}>
-                      {item.count}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </nav>
+            {/* User Info & Logout - Desktop */}
+            <div className="hidden md:flex items-center gap-4">
+              {currentUser && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <User className="w-4 h-4" />
+                  <span>{currentUser.name || currentUser.phone}</span>
+                </div>
+              )}
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1.5 text-gray-600 hover:text-red-600 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 transition"
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
+              </button>
+            </div>
 
             {/* Mobile Menu Button */}
             <button
@@ -549,6 +610,15 @@ function App() {
         {/* Mobile Navigation Menu */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-gray-200 bg-white">
+            {/* User Info */}
+            {currentUser && (
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <User className="w-4 h-4" />
+                  <span className="font-medium">{currentUser.name || currentUser.phone}</span>
+                </div>
+              </div>
+            )}
             <nav className="px-3 py-2 space-y-1">
               {navItems.map(item => (
                 <button
@@ -573,10 +643,47 @@ function App() {
                   )}
                 </button>
               ))}
+              {/* Mobile Logout */}
+              <button
+                onClick={handleLogout}
+                className="w-full px-4 py-3 rounded-lg font-medium transition flex items-center text-left touch-target text-red-600 hover:bg-red-50"
+              >
+                <LogOut className="w-5 h-5 mr-3" />
+                Logout
+              </button>
             </nav>
           </div>
         )}
       </header>
+
+      {/* Desktop Navigation */}
+      <nav className="hidden md:block bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex gap-1">
+            {navItems.map(item => (
+              <button
+                key={item.id}
+                onClick={() => setCurrentView(item.id)}
+                className={`px-4 py-3 font-medium transition text-sm border-b-2 ${
+                  currentView === item.id
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <item.icon className="w-4 h-4 inline mr-1.5" />
+                {item.label}
+                {item.count !== null && (
+                  <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs ${
+                    currentView === item.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {item.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </nav>
 
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
         {/* Upload Warnings */}

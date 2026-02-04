@@ -3,13 +3,17 @@ import {
   CheckCircle, XCircle, AlertTriangle, FileText, 
   DollarSign, User, Calendar, Search, Filter,
   Eye, ThumbsUp, ThumbsDown, Copy, Image as ImageIcon,
-  ArrowLeft, Menu, X
+  ArrowLeft, Menu, X, LogOut
 } from 'lucide-react';
 import axios from 'axios';
 
 // Use relative URLs - works in both local dev and production (Railway)
 const API_BASE = '/api';
 const API_IMAGE_BASE = '';
+const AUTH_URL = 'https://auth.atap.solar';
+
+// Configure axios to send credentials (cookies)
+axios.defaults.withCredentials = true;
 
 export default function AdminVerificationPage() {
   const [activeTab, setActiveTab] = useState('verifications'); // verifications | duplicates | stats
@@ -20,17 +24,46 @@ export default function AdminVerificationPage() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [verificationNotes, setVerificationNotes] = useState('');
   const [filter, setFilter] = useState('');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
-  // Load data on mount and tab change
+  // Check auth on mount
   useEffect(() => {
-    loadData();
-  }, [activeTab]);
+    checkAuth();
+  }, []);
 
-  // Close mobile menu when tab changes
+  // Load data when auth is confirmed
   useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [activeTab]);
+    if (currentUser && (currentUser.isAdmin || currentUser.role === 'admin')) {
+      loadData();
+    }
+  }, [currentUser, activeTab]);
+
+  const checkAuth = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/me`);
+      setCurrentUser(response.data.user);
+      setAuthChecked(true);
+    } catch (error) {
+      if (error.response?.status === 401) {
+        // Redirect to auth hub
+        const returnTo = encodeURIComponent(window.location.href);
+        window.location.href = `${AUTH_URL}/?return_to=${returnTo}`;
+      } else {
+        console.error('Auth check failed:', error);
+        setAuthChecked(true);
+      }
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await axios.post(`${API_BASE}/logout`);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+    window.location.href = `${AUTH_URL}/auth/logout`;
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -42,28 +75,33 @@ export default function AdminVerificationPage() {
         const response = await axios.get(`${API_BASE}/admin/duplicates`);
         setDuplicates(response.data.duplicates);
       } else if (activeTab === 'stats') {
-        // Try to get stats, fallback to calculating from verifications
+        // Calculate stats from verifications
         try {
-          const response = await axios.get(`${API_BASE}/admin/stats`);
-          setStats(response.data);
-        } catch {
-          // Fallback: calculate basic stats
-          const verifResponse = await axios.get(`${API_BASE}/admin/verifications?limit=1000`);
-          const allExpenses = verifResponse.data.expenses;
+          const response = await axios.get(`${API_BASE}/admin/verifications?limit=1000`);
+          const allExpenses = response.data.expenses;
           const pending = allExpenses.filter(e => e.status === 'pending_verification').length;
           const approved = allExpenses.filter(e => e.status === 'approved').length;
           const rejected = allExpenses.filter(e => e.status === 'rejected').length;
+          const duplicatesRes = await axios.get(`${API_BASE}/admin/duplicates?limit=1000`).catch(() => ({ data: { duplicates: [] } }));
           setStats({
             totalExpenses: allExpenses.length,
             pendingVerifications: pending,
             approved,
             rejected,
-            flaggedDuplicates: 0,
+            flaggedDuplicates: duplicatesRes.data.duplicates?.length || 0,
             totalReceipts: allExpenses.reduce((sum, e) => sum + (e.receiptCount || 0), 0)
           });
+        } catch (error) {
+          console.error('Stats load error:', error);
         }
       }
     } catch (error) {
+      if (error.response?.status === 401) {
+        checkAuth();
+      } else if (error.response?.status === 403) {
+        alert('Admin access required');
+        window.location.href = '/';
+      }
       console.error('Load data error:', error);
     } finally {
       setLoading(false);
@@ -74,13 +112,15 @@ export default function AdminVerificationPage() {
     try {
       await axios.post(`${API_BASE}/admin/verifications/${expenseId}`, {
         action,
-        notes: verificationNotes,
-        adminId: 'admin-1' // In real app, from auth context
+        notes: verificationNotes
       });
       setSelectedItem(null);
       setVerificationNotes('');
       loadData();
     } catch (error) {
+      if (error.response?.status === 401) {
+        checkAuth();
+      }
       console.error('Verification error:', error);
       alert('Error: ' + error.message);
     }
@@ -96,6 +136,9 @@ export default function AdminVerificationPage() {
       setVerificationNotes('');
       loadData();
     } catch (error) {
+      if (error.response?.status === 401) {
+        checkAuth();
+      }
       console.error('Resolve error:', error);
       alert('Error: ' + error.message);
     }
@@ -665,6 +708,37 @@ export default function AdminVerificationPage() {
     { id: 'duplicates', label: 'Duplicates', longLabel: 'Duplicate Detection' },
   ];
 
+  // Show loading while checking auth
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show access denied if not admin
+  if (authChecked && currentUser && !currentUser.isAdmin && currentUser.role !== 'admin') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="w-16 h-16 mx-auto mb-4 text-red-500" />
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
+          <p className="text-gray-600 mb-4">Admin access is required to view this page.</p>
+          <button
+            onClick={() => window.location.href = '/'}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header - Mobile Optimized */}
@@ -675,13 +749,22 @@ export default function AdminVerificationPage() {
               <h1 className="text-lg sm:text-2xl font-bold text-gray-900">Admin Verification</h1>
               <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Review and approve expense claims</p>
             </div>
-            <button
-              onClick={() => window.location.href = '/'}
-              className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 touch-target"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Back</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => window.location.href = '/'}
+                className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 touch-target"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">Back</span>
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1.5 text-red-600 hover:text-red-700 text-sm font-medium px-3 py-2 rounded-lg hover:bg-red-50 touch-target"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>

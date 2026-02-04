@@ -1,10 +1,12 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const db = require('./config/db');
 const uniapiService = require('./services/uniapiService');
 const duplicateDetectionService = require('./services/duplicateDetectionService');
 const { autoCategorize, getAllCategories, getCategoryById } = require('./config/categories');
+const { requireAuth, requireApiAuth, requireAdmin, AUTH_URL } = require('./middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -19,7 +21,12 @@ if (process.env.PORT && process.env.PORT !== String(PORT)) {
 }
 
 // Middleware
-app.use(cors());
+// CORS must allow credentials for cookies to work
+app.use(cors({
+  origin: true, // Allow all origins with credentials (for subdomain auth)
+  credentials: true
+}));
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -71,23 +78,39 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), mode: 'postgresql' });
 });
 
-// Get all categories
+// Get all categories (public)
 app.get('/api/categories', (req, res) => {
   res.json({ categories: getAllCategories() });
 });
 
+// Get current user info
+app.get('/api/me', requireApiAuth, (req, res) => {
+  res.json({
+    userId: req.userId,
+    user: req.user
+  });
+});
+
+// Logout endpoint
+app.post('/api/logout', (req, res) => {
+  res.clearCookie('auth_token', {
+    domain: '.atap.solar',
+    path: '/'
+  });
+  res.json({ success: true, message: 'Logged out' });
+});
+
+// ==================== PROTECTED API ROUTES ====================
+
 // Upload receipt to shoebox with auto-categorization and duplicate detection
-app.post('/api/receipts/upload', upload.single('receipt'), async (req, res) => {
+app.post('/api/receipts/upload', requireApiAuth, upload.single('receipt'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { userId } = req.body;
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
-    }
-
+    // Use authenticated user's ID
+    const userId = req.userId;
     console.log(`📄 Processing upload for user: ${userId}`);
 
     // OCR processing with UniAPI
@@ -217,10 +240,10 @@ app.post('/api/receipts/upload', upload.single('receipt'), async (req, res) => {
   }
 });
 
-// Get all receipts for a user
-app.get('/api/receipts/:userId', async (req, res) => {
+// Get all receipts for the authenticated user
+app.get('/api/receipts', requireApiAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.userId;
     const { status, limit = 50 } = req.query;
 
     let queryStr = 'SELECT * FROM receipts WHERE user_id = $1';
@@ -268,11 +291,17 @@ app.get('/api/receipts/:userId', async (req, res) => {
   }
 });
 
-// Get single receipt details
-app.get('/api/receipts/detail/:receiptId', async (req, res) => {
+// Get single receipt details (only if owned by user)
+app.get('/api/receipts/detail/:receiptId', requireApiAuth, async (req, res) => {
   try {
     const { receiptId } = req.params;
-    const result = await db.query('SELECT * FROM receipts WHERE id = $1', [receiptId]);
+    const userId = req.userId;
+    
+    // Only allow access to user's own receipts
+    const result = await db.query(
+      'SELECT * FROM receipts WHERE id = $1 AND user_id = $2',
+      [receiptId, userId]
+    );
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Receipt not found' });
@@ -307,12 +336,18 @@ app.get('/api/receipts/detail/:receiptId', async (req, res) => {
   }
 });
 
-// Run tamper detection on a receipt
-app.post('/api/receipts/:receiptId/tamper-check', async (req, res) => {
+// Run tamper detection on a receipt (only if owned by user)
+app.post('/api/receipts/:receiptId/tamper-check', requireApiAuth, async (req, res) => {
   try {
     const { receiptId } = req.params;
+    const userId = req.userId;
     
-    const result = await db.query('SELECT * FROM receipts WHERE id = $1', [receiptId]);
+    // Only allow tamper check on user's own receipts
+    const result = await db.query(
+      'SELECT * FROM receipts WHERE id = $1 AND user_id = $2',
+      [receiptId, userId]
+    );
+    
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Receipt not found' });
     }
@@ -352,18 +387,23 @@ app.post('/api/receipts/:receiptId/tamper-check', async (req, res) => {
 });
 
 // Batch submit receipts for expense claim
-app.post('/api/expenses/submit', async (req, res) => {
+app.post('/api/expenses/submit', requireApiAuth, async (req, res) => {
   try {
-    const { userId, receiptIds, category, notes } = req.body;
+    const userId = req.userId;
+    const { receiptIds, category, notes } = req.body;
+    
     console.log(`📤 Received expense submission for user ${userId} with ${receiptIds?.length} receipts`);
 
-    if (!userId || !receiptIds || receiptIds.length === 0) {
-      console.warn('❌ Submission failed: Missing userId or receiptIds');
-      return res.status(400).json({ error: 'userId and receiptIds are required' });
+    if (!receiptIds || receiptIds.length === 0) {
+      console.warn('❌ Submission failed: Missing receiptIds');
+      return res.status(400).json({ error: 'receiptIds are required' });
     }
 
-    // Get receipt data
-    const result = await db.query('SELECT * FROM receipts WHERE id = ANY($1)', [receiptIds]);
+    // Get receipt data - only for the current user
+    const result = await db.query(
+      'SELECT * FROM receipts WHERE id = ANY($1) AND user_id = $2',
+      [receiptIds, userId]
+    );
     const receipts = result.rows;
 
     console.log(`🔍 Found ${receipts.length} valid receipts out of ${receiptIds.length} requested`);
@@ -425,10 +465,10 @@ app.post('/api/expenses/submit', async (req, res) => {
   }
 });
 
-// Get expense claims
-app.get('/api/expenses/:userId', async (req, res) => {
+// Get expense claims for authenticated user
+app.get('/api/expenses', requireApiAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.userId;
     const { status } = req.query;
 
     let queryStr = 'SELECT * FROM expenses WHERE user_id = $1';
@@ -467,13 +507,16 @@ app.get('/api/expenses/:userId', async (req, res) => {
   }
 });
 
-// Get spending analysis by category
-app.get('/api/analytics/spending/:userId', async (req, res) => {
+// Get spending analysis by category for authenticated user
+app.get('/api/analytics/spending', requireApiAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.userId;
     const { period = 'month' } = req.query;
 
-    const result = await db.query('SELECT ocr_data, category_id FROM receipts WHERE user_id = $1', [userId]);
+    const result = await db.query(
+      'SELECT ocr_data, category_id FROM receipts WHERE user_id = $1',
+      [userId]
+    );
     const receipts = result.rows;
 
     const categoryTotals = {};
@@ -516,8 +559,8 @@ app.get('/api/analytics/spending/:userId', async (req, res) => {
 
 // ==================== ADMIN API ROUTES ====================
 
-// Get all pending verifications (admin)
-app.get('/api/admin/verifications', async (req, res) => {
+// Get all pending verifications (admin only)
+app.get('/api/admin/verifications', requireApiAuth, requireAdmin, async (req, res) => {
   try {
     const { status = 'pending_verification', limit = 50 } = req.query;
 
@@ -550,8 +593,8 @@ app.get('/api/admin/verifications', async (req, res) => {
   }
 });
 
-// Get duplicate reports for admin review
-app.get('/api/admin/duplicates', async (req, res) => {
+// Get duplicate reports for admin review (admin only)
+app.get('/api/admin/duplicates', requireApiAuth, requireAdmin, async (req, res) => {
   try {
     const { limit = 50 } = req.query;
 
@@ -615,11 +658,12 @@ app.get('/api/admin/duplicates', async (req, res) => {
   }
 });
 
-// Admin verify/reject expense claim
-app.post('/api/admin/verifications/:expenseId', async (req, res) => {
+// Admin verify/reject expense claim (admin only)
+app.post('/api/admin/verifications/:expenseId', requireApiAuth, requireAdmin, async (req, res) => {
   try {
     const { expenseId } = req.params;
-    const { action, notes, adminId } = req.body;
+    const { action, notes } = req.body;
+    const adminId = req.userId; // Use authenticated admin's ID
 
     if (!['approve', 'reject'].includes(action)) {
       return res.status(400).json({ error: 'Invalid action. Use approve or reject' });
@@ -664,8 +708,8 @@ app.post('/api/admin/verifications/:expenseId', async (req, res) => {
   }
 });
 
-// Admin mark receipt as not duplicate (false positive)
-app.post('/api/admin/duplicates/:receiptId/resolve', async (req, res) => {
+// Admin mark receipt as not duplicate (admin only)
+app.post('/api/admin/duplicates/:receiptId/resolve', requireApiAuth, requireAdmin, async (req, res) => {
   try {
     const { receiptId } = req.params;
     const { isDuplicate, notes } = req.body;
@@ -708,6 +752,7 @@ db.initDb().then(() => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log('📊 Mode: PostgreSQL');
     console.log(`🔗 API: http://localhost:${PORT}/api`);
+    console.log(`🔐 Auth: ${AUTH_URL}`);
   });
 }).catch(err => {
   console.error('Failed to initialize database, exiting...');
