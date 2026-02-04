@@ -8,8 +8,9 @@ import Dropzone from 'react-dropzone';
 import axios from 'axios';
 import AdminVerificationPage from './AdminVerificationPage';
 
-const API_BASE = 'http://localhost:10002/api';
-const API_IMAGE_BASE = 'http://localhost:10002';
+// Use relative URLs - works in both local dev and production (Railway)
+const API_BASE = '/api';
+const API_IMAGE_BASE = '';
 const USER_ID = 'demo-user-1'; // In production, get from parent app
 
 function App() {

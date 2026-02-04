@@ -6,8 +6,9 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:10002/api';
-const API_IMAGE_BASE = 'http://localhost:10002';
+// Use relative URLs - works in both local dev and production (Railway)
+const API_BASE = '/api';
+const API_IMAGE_BASE = '';
 
 export default function AdminVerificationPage() {
   const [activeTab, setActiveTab] = useState('verifications'); // verifications | duplicates | stats
