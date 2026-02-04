@@ -96,7 +96,9 @@ app.get('/api/test-db', async (req, res) => {
 // Get current user info
 app.get('/api/me', requireApiAuth, async (req, res) => {
   try {
-    console.log('/api/me called, userId:', req.userId);
+    console.log('=== /api/me START ===');
+    console.log('userId from req:', req.userId);
+    console.log('req.user:', JSON.stringify(req.user));
     
     // JWT data from auth hub
     const jwtUser = req.user;
@@ -149,6 +151,8 @@ app.get('/api/me', requireApiAuth, async (req, res) => {
       }
     } catch (dbError) {
       console.error('DB query error:', dbError.message);
+      console.error('DB error code:', dbError.code);
+      console.error('DB error detail:', dbError.detail);
       console.error(dbError.stack);
     }
     
@@ -165,15 +169,19 @@ app.get('/api/me', requireApiAuth, async (req, res) => {
     };
     
     console.log('Returning user data:', JSON.stringify(userData));
+    console.log('=== /api/me SUCCESS ===');
     
     res.json({
       userId: req.userId,
       user: userData
     });
   } catch (error) {
-    console.error('Error in /api/me:', error);
+    console.error('=== /api/me ERROR ===');
+    console.error('Error type:', error.constructor.name);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
     console.error(error.stack);
-    res.status(500).json({ error: 'Failed to get user info', details: error.message });
+    res.status(500).json({ error: 'Failed to get user info', details: error.message, code: error.code });
   }
 });
 
