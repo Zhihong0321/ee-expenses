@@ -1,0 +1,114 @@
+<project_spec name="AI-Assisted Expense Claims (SaaS-Ready)">
+<overview>A cloud-native expense management system allowing employees to "bank" receipts into a digital shoebox for batch-submission.</overview>
+
+<cli_agent_config>
+<instruction_set>
+- Model Preference: Always use gemini-3-flash-preview via the UniAPI wrapper.
+- Error Handling: Implement exponential backoff for all API calls (UniAPI).
+- Data Integrity: All OCR results must be validated against a strict JSON schema before being saved to the DB.
+- Security: Never hardcode keys; use process.env.UNIAPI_KEY.
+- Auth: NO AUTH in this module - handled by parent app ecosystem. This module accepts userId from host.
+</instruction_set>
+
+<tech_stack>
+- Frontend: React (Vite)
+- Backend: Node.js (Express)
+- Database: Firestore
+- AI: UniAPI (Gemini 3 Flash)
+</tech_stack>
+</cli_agent_config>
+
+<technical_integration>
+<provider name="UniAPI" standard="OpenAI-Compatible">
+<endpoint_chat>https://api.uniapi.io/v1/chat/completions</endpoint_chat>
+<endpoint_response>https://api.uniapi.io/v1/responses</endpoint_response>
+<model_identifier>gemini-3-flash-preview</model_identifier>
+</provider>
+</technical_integration>
+
+<!-- MILESTONE 1: COMPLETE -->
+<milestone index="1" title="The Shoebox & Data Foundation" status="complete">
+<feature name="Receipt Upload & OCR">
+- Drag-and-drop upload with react-dropzone
+- Multer file handling (10MB limit)
+- UniAPI OCR with exponential backoff (5 retries)
+- Joi schema validation for OCR results
+</feature>
+<feature name="Firestore Integration">
+- receipts collection with userId indexing
+- expenses collection for claims
+- Timestamp tracking for audit trail
+</feature>
+</milestone>
+
+<!-- MILESTONE 2: COMPLETE -->
+<milestone index="2" title="Batch Submission & Claims" status="complete">
+<feature name="Expense Claim Workflow">
+- Multi-select receipts for batch submission
+- Category and notes input
+- Status: processed → pending_verification
+</feature>
+<feature name="Receipt Management">
+- List/filter receipts by status
+- Receipt detail view with items
+</feature>
+</milestone>
+
+<!-- MILESTONE 3: COMPLETE -->
+<milestone index="3" title="Tamper Detection & Duplicate Prevention" status="complete">
+<feature name="Tamper Detection">
+- AI-powered image analysis for fraud
+- Risk levels: low/medium/high
+- Reasons provided for flagged receipts
+- Endpoint: POST /api/receipts/:id/tamper-check
+</feature>
+<feature name="Duplicate Detection">
+- Fuzzy string matching for merchants
+- Amount ±5% tolerance matching
+- Date exact matching
+- AI deep analysis for high-confidence matches
+- Flags receipts before submission
+</feature>
+<feature name="Auto-Categorization">
+- 10 preset categories with keywords
+- Merchant matching algorithm
+- Item-based categorization fallback
+- Categories: travel, meals, office, tech, professional, marketing, utilities, health, client, misc
+</feature>
+</milestone>
+
+<!-- MILESTONE 4: ADMIN & ANALYTICS - COMPLETE -->
+<milestone index="4" title="Admin Verification & Analytics" status="complete">
+<feature name="Admin Dashboard">
+- Stats overview (pending, approved, rejected, duplicates)
+- Pending verifications list
+- Duplicate reports queue
+</feature>
+<feature name="Verification Workflow">
+- Review expense claims with receipt details
+- Approve/Reject with notes
+- Bulk category breakdown display
+</feature>
+<feature name="Duplicate Resolution">
+- Side-by-side receipt comparison
+- Confirm or dismiss duplicate flag
+- Resolution notes tracking
+</feature>
+<feature name="Spending Analytics">
+- Category breakdown with percentages
+- Time period filtering (week/month/quarter/year)
+- Total spending and receipt counts
+</feature>
+</milestone>
+
+<!-- DELIVERABLES -->
+<deliverables>
+<file path="backend/src/server.js">Main Express server with all routes</file>
+<file path="backend/src/services/uniapiService.js">OCR, tamper detection, validation</file>
+<file path="backend/src/services/duplicateDetectionService.js">Duplicate detection logic</file>
+<file path="backend/src/config/categories.js">Preset categories & auto-categorization</file>
+<file path="frontend/src/App.jsx">User interface (shoebox, expenses, analytics)</file>
+<file path="frontend/src/AdminVerificationPage.jsx">Admin dashboard</file>
+</deliverables>
+
+</project_spec>

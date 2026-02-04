@@ -1,0 +1,16 @@
+node_modules
+backend/node_modules
+frontend/node_modules
+*.log
+.git
+.gitignore
+.env
+.env.local
+.env.*.local
+README.md
+.vscode
+.idea
+*.md
+!schema.sql
+uploads/*
+sample_bill
