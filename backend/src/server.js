@@ -83,11 +83,24 @@ app.get('/api/categories', (req, res) => {
   res.json({ categories: getAllCategories() });
 });
 
+// Test DB endpoint
+app.get('/api/test-db', async (req, res) => {
+  try {
+    const result = await db.query('SELECT NOW() as time');
+    res.json({ status: 'ok', dbTime: result.rows[0].time });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get current user info
 app.get('/api/me', requireApiAuth, async (req, res) => {
   try {
+    console.log('/api/me called, userId:', req.userId);
+    
     // JWT data from auth hub
     const jwtUser = req.user;
+    console.log('JWT data:', JSON.stringify(jwtUser));
     
     // Fetch user from database
     let dbUser = null;
@@ -95,39 +108,48 @@ app.get('/api/me', requireApiAuth, async (req, res) => {
     let profilePic = null;
     
     try {
+      console.log('Querying user with bubble_id:', req.userId);
       // Step 1: Get user data
       const userResult = await db.query(
         'SELECT profile_picture, email, access_level, linked_agent_profile FROM "user" WHERE bubble_id = $1 LIMIT 1',
         [req.userId]
       );
+      console.log('User query result count:', userResult.rows.length);
       
       if (userResult.rows.length > 0) {
         dbUser = userResult.rows[0];
+        console.log('Found user, email:', dbUser.email);
         
         // Fix profile picture URL
         if (dbUser.profile_picture) {
           profilePic = dbUser.profile_picture.startsWith('//') 
             ? 'https:' + dbUser.profile_picture 
             : dbUser.profile_picture;
+          console.log('Profile pic fixed:', profilePic ? 'yes' : 'no');
         }
         
         // Step 2: Get agent name separately
         if (dbUser.linked_agent_profile) {
           try {
+            console.log('Querying agent:', dbUser.linked_agent_profile);
             const agentResult = await db.query(
               'SELECT name FROM agent WHERE bubble_id = $1 LIMIT 1',
               [dbUser.linked_agent_profile]
             );
             if (agentResult.rows.length > 0) {
               agentName = agentResult.rows[0].name;
+              console.log('Found agent:', agentName);
             }
           } catch (agentErr) {
             console.log('Agent query error:', agentErr.message);
           }
         }
+      } else {
+        console.log('No user found with bubble_id:', req.userId);
       }
     } catch (dbError) {
-      console.log('DB query error:', dbError.message);
+      console.error('DB query error:', dbError.message);
+      console.error(dbError.stack);
     }
     
     // Build user data
@@ -142,13 +164,16 @@ app.get('/api/me', requireApiAuth, async (req, res) => {
       access_level: dbUser?.access_level || null
     };
     
+    console.log('Returning user data:', JSON.stringify(userData));
+    
     res.json({
       userId: req.userId,
       user: userData
     });
   } catch (error) {
     console.error('Error in /api/me:', error);
-    res.status(500).json({ error: 'Failed to get user info' });
+    console.error(error.stack);
+    res.status(500).json({ error: 'Failed to get user info', details: error.message });
   }
 });
 
