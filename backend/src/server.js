@@ -86,10 +86,13 @@ app.get('/api/categories', (req, res) => {
 // Get current user info
 app.get('/api/me', requireApiAuth, async (req, res) => {
   try {
-    // Start with JWT user data
-    const userData = { ...req.user };
+    // JWT data from auth hub: { userId, phone, role, isAdmin, name }
+    const jwtUser = req.user;
     
-    // Try to fetch additional user info from database (profile picture, etc.)
+    console.log('JWT User Data:', JSON.stringify(jwtUser));
+    
+    // Try to fetch additional user info from database
+    let dbUser = null;
     try {
       const userResult = await db.query(
         'SELECT profile_picture, name, email, access_level FROM "user" WHERE bubble_id = $1 LIMIT 1',
@@ -97,17 +100,30 @@ app.get('/api/me', requireApiAuth, async (req, res) => {
       );
       
       if (userResult.rows.length > 0) {
-        const dbUser = userResult.rows[0];
-        // Merge DB data with JWT data (JWT takes precedence for most fields)
-        userData.profile_picture = userData.profile_picture || dbUser.profile_picture;
-        userData.name = userData.name || dbUser.name;
-        userData.email = userData.email || dbUser.email;
-        userData.access_level = dbUser.access_level;
+        dbUser = userResult.rows[0];
+        console.log('DB User Data found:', JSON.stringify(dbUser));
+      } else {
+        console.log('No user found in DB with bubble_id:', req.userId);
       }
     } catch (dbError) {
-      // If DB query fails, still return JWT data
-      console.log('Could not fetch additional user data from DB:', dbError.message);
+      console.log('DB query error:', dbError.message);
     }
+    
+    // Merge data: JWT takes priority, fill in gaps from DB
+    const userData = {
+      userId: req.userId,
+      // JWT fields
+      name: jwtUser.name || jwtUser.userName || null,
+      phone: jwtUser.phone || jwtUser.userPhone || null,
+      email: jwtUser.email || null,
+      role: jwtUser.role || null,
+      isAdmin: jwtUser.isAdmin || jwtUser.is_admin || false,
+      // DB fields (if JWT doesn't have them)
+      profile_picture: jwtUser.profilePicture || jwtUser.profile_picture || (dbUser?.profile_picture) || null,
+      access_level: dbUser?.access_level || null
+    };
+    
+    console.log('Returning user data:', JSON.stringify(userData));
     
     res.json({
       userId: req.userId,

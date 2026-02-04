@@ -55,6 +55,7 @@ function App() {
   const checkAuth = async () => {
     try {
       const response = await axios.get(`${API_BASE}/me`);
+      console.log('Auth response:', response.data);
       setCurrentUser(response.data.user);
       setAuthChecked(true);
     } catch (error) {
@@ -582,10 +583,10 @@ function App() {
             
             {/* User Info & Logout - Desktop */}
             <div className="hidden md:flex items-center gap-3">
-              {currentUser && (
+              {currentUser ? (
                 <div className="flex items-center gap-3">
                   {/* Profile Picture */}
-                  {currentUser.profilePicture || currentUser.profile_picture ? (
+                  {(currentUser.profilePicture || currentUser.profile_picture) ? (
                     <img
                       src={currentUser.profilePicture || currentUser.profile_picture}
                       alt="Profile"
@@ -595,23 +596,24 @@ function App() {
                         e.target.nextSibling.style.display = 'flex';
                       }}
                     />
-                  ) : null}
-                  <div 
-                    className={`w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center border-2 border-gray-200 ${currentUser.profilePicture || currentUser.profile_picture ? 'hidden' : 'flex'}`}
-                  >
-                    <User className="w-5 h-5" />
-                  </div>
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center border-2 border-gray-200">
+                      <User className="w-5 h-5" />
+                    </div>
+                  )}
                   
                   {/* User Name */}
                   <div className="flex flex-col items-start">
                     <span className="text-sm font-medium text-gray-900">
-                      {currentUser.name || currentUser.phone || 'User'}
+                      {currentUser.name || currentUser.phone || currentUser.userId?.substring(0, 20) || 'User'}
                     </span>
                     {currentUser.role && (
                       <span className="text-xs text-gray-500 capitalize">{currentUser.role}</span>
                     )}
                   </div>
                 </div>
+              ) : (
+                <span className="text-sm text-gray-500">Loading...</span>
               )}
               <div className="h-6 w-px bg-gray-200 mx-1" />
               <button
@@ -623,13 +625,34 @@ function App() {
               </button>
             </div>
 
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg touch-target"
-            >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+            {/* Mobile Header - User Avatar + Menu Button */}
+            <div className="md:hidden flex items-center gap-2">
+              {currentUser ? (
+                <div className="flex items-center gap-2">
+                  {/* Profile Picture - Small for mobile header */}
+                  {(currentUser.profilePicture || currentUser.profile_picture) ? (
+                    <img
+                      src={currentUser.profilePicture || currentUser.profile_picture}
+                      alt="Profile"
+                      className="w-8 h-8 rounded-full object-cover border border-gray-200"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center border border-gray-200">
+                      <User className="w-4 h-4" />
+                    </div>
+                  )}
+                </div>
+              ) : null}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg touch-target"
+              >
+                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -641,25 +664,25 @@ function App() {
               <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
                 <div className="flex items-center gap-3">
                   {/* Profile Picture */}
-                  {currentUser.profilePicture || currentUser.profile_picture ? (
+                  {(currentUser.profilePicture || currentUser.profile_picture) ? (
                     <img
                       src={currentUser.profilePicture || currentUser.profile_picture}
                       alt="Profile"
                       className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
                       onError={(e) => {
                         e.target.style.display = 'none';
-                        e.target.nextSibling.style.display = 'flex';
                       }}
                     />
-                  ) : null}
-                  <div 
-                    className={`w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center border-2 border-gray-200 ${currentUser.profilePicture || currentUser.profile_picture ? 'hidden' : 'flex'}`}
-                  >
-                    <User className="w-5 h-5" />
-                  </div>
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center border-2 border-gray-200">
+                      <User className="w-5 h-5" />
+                    </div>
+                  )}
                   
                   <div className="flex flex-col">
-                    <span className="font-medium text-gray-900">{currentUser.name || currentUser.phone || 'User'}</span>
+                    <span className="font-medium text-gray-900">
+                      {currentUser.name || currentUser.phone || currentUser.userId?.substring(0, 20) || 'User'}
+                    </span>
                     {currentUser.role && (
                       <span className="text-xs text-gray-500 capitalize">{currentUser.role}</span>
                     )}
