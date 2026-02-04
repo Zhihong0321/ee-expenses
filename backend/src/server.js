@@ -27,10 +27,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static('uploads'));
 
 // Serve static frontend files (production build)
-const publicPath = path.join(__dirname, '../../public');
+const publicPath = path.join(__dirname, '../public');
 if (fs.existsSync(publicPath)) {
   app.use(express.static(publicPath));
   console.log('📁 Serving static files from:', publicPath);
+} else {
+  console.log('⚠️  Public path not found:', publicPath);
 }
 
 // Configure multer for file uploads
@@ -692,11 +694,11 @@ app.post('/api/admin/duplicates/:receiptId/resolve', async (req, res) => {
 
 // SPA catch-all route - serve index.html for any non-API routes
 app.get('*', (req, res) => {
-  const indexPath = path.join(__dirname, '../../public/index.html');
+  const indexPath = path.join(__dirname, '../public/index.html');
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.status(404).json({ error: 'Not found' });
+    res.status(404).json({ error: 'Not found', path: indexPath });
   }
 });
 
