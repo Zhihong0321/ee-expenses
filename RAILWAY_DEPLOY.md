@@ -82,12 +82,21 @@ The deployment uses:
 
 This app integrates with `auth.atap.solar` for centralized authentication:
 
-1. User visits your app (e.g., `expenses.atap.solar`)
+1. User visits your app at `https://expenses.atap.solar`
 2. App checks for `auth_token` cookie
-3. If missing, redirects to `auth.atap.solar/?return_to=your-app`
+3. If missing, redirects to `https://auth.atap.solar/?return_to=https://expenses.atap.solar`
 4. User logs in via WhatsApp OTP on Auth Hub
-5. Auth Hub sets cookie and redirects back
+5. Auth Hub sets cookie and redirects back to `expenses.atap.solar`
 6. App verifies JWT and logs user in
+
+### Return URL Configuration
+
+The return URL is automatically set based on the current domain. Ensure your app is hosted at:
+```
+expenses.atap.solar
+```
+
+And the Auth Hub is configured to allow this domain as a valid return URL.
 
 ### User Data Isolation
 
