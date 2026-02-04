@@ -44,18 +44,21 @@ railway vars set FRONTEND_URL=
 
 ### 5. Deploy
 
+**Option A: Deploy from GitHub (Recommended)**
+1. Connect your GitHub repo in Railway dashboard
+2. Railway auto-detects the `Dockerfile`
+3. Deploy triggers automatically on push
+
+**Option B: Deploy via CLI**
 ```bash
 railway up
 ```
-
-Or push to a GitHub repo connected to Railway.
 
 ## Build Configuration
 
 The deployment uses:
 
-- **`Dockerfile`**: Multi-stage build that compiles the React frontend and packages it with the Node.js backend
-- **`railway.toml`**: Explicitly sets `builder = "docker"` to bypass Nixpacks
+- **`Dockerfile`**: Multi-stage build that compiles the React frontend and packages it with the Node.js backend (Railway auto-detects this)
 - **Static file serving**: Backend serves the built frontend from `/public` directory
 
 ## Environment Variables Reference
