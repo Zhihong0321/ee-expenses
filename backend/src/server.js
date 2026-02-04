@@ -88,39 +88,42 @@ app.get('/api/me', requireApiAuth, async (req, res) => {
   try {
     // JWT data from auth hub
     const jwtUser = req.user;
-    console.log('JWT User Data:', JSON.stringify(jwtUser));
     
-    // Fetch user from database using ACTUAL schema
+    // Fetch user + agent name from database
     let dbUser = null;
+    let agentName = null;
     try {
+      // Get user with linked agent info
       const userResult = await db.query(
-        'SELECT profile_picture, email, access_level, linked_agent_profile FROM "user" WHERE bubble_id = $1 LIMIT 1',
+        `SELECT u.profile_picture, u.email, u.access_level, u.linked_agent_profile, a.name as agent_name
+         FROM "user" u
+         LEFT JOIN agent a ON a.bubble_id = u.linked_agent_profile
+         WHERE u.bubble_id = $1
+         LIMIT 1`,
         [req.userId]
       );
       
       if (userResult.rows.length > 0) {
         dbUser = userResult.rows[0];
-        console.log('DB User found:', dbUser.email);
+        agentName = dbUser.agent_name;
       }
     } catch (dbError) {
       console.log('DB query error:', dbError.message);
     }
     
-    // Build user data from JWT + DB
+    // Build user data
     const userData = {
       userId: req.userId,
-      // Use JWT name/phone if available, otherwise fallback to email
-      name: jwtUser.name || jwtUser.userName || dbUser?.email || 'User',
-      phone: jwtUser.phone || jwtUser.userPhone || null,
+      // Use agent name if available, then JWT name, then email
+      name: agentName || jwtUser.name || dbUser?.email || 'User',
+      phone: jwtUser.phone || null,
       email: jwtUser.email || dbUser?.email || null,
       role: jwtUser.role || null,
-      isAdmin: jwtUser.isAdmin || jwtUser.is_admin || false,
-      // Profile picture from DB
+      isAdmin: jwtUser.isAdmin || false,
+      // Profile picture from user table
       profile_picture: dbUser?.profile_picture || null,
       access_level: dbUser?.access_level || null
     };
-    
-    console.log('Returning user:', userData.name, '| picture:', userData.profile_picture ? 'yes' : 'no');
     
     res.json({
       userId: req.userId,
