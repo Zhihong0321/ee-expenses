@@ -38,6 +38,10 @@ railway vars set UNIAPI_KEY=your_uniapi_key_here
 railway vars set UNIAPI_BASE_URL=https://api.uniapi.io/v1
 railway vars set UNIAPI_MODEL=gemini-3-flash-preview
 
+# Required for Auth Hub integration (atap.solar SSO)
+railway vars set JWT_SECRET=your_shared_jwt_secret_here
+railway vars set AUTH_URL=https://auth.atap.solar
+
 # Optional: CORS (defaults to allow all in production)
 railway vars set FRONTEND_URL=
 ```
@@ -69,8 +73,27 @@ The deployment uses:
 | `UNIAPI_KEY` | Yes | Your UniAPI key for OCR |
 | `UNIAPI_BASE_URL` | Yes | `https://api.uniapi.io/v1` |
 | `UNIAPI_MODEL` | Yes | `gemini-3-flash-preview` |
+| `JWT_SECRET` | Yes | Shared JWT secret with auth.atap.solar |
+| `AUTH_URL` | No | Auth hub URL (default: `https://auth.atap.solar`) |
 | `PORT` | No | Defaults to `10002` |
 | `NODE_ENV` | No | Set to `production` automatically |
+
+## Auth Hub Integration
+
+This app integrates with `auth.atap.solar` for centralized authentication:
+
+1. User visits your app (e.g., `expenses.atap.solar`)
+2. App checks for `auth_token` cookie
+3. If missing, redirects to `auth.atap.solar/?return_to=your-app`
+4. User logs in via WhatsApp OTP on Auth Hub
+5. Auth Hub sets cookie and redirects back
+6. App verifies JWT and logs user in
+
+### User Data Isolation
+
+- All receipts are tied to the authenticated user's ID
+- Users can only see their own receipts and expenses
+- Admin users (with `isAdmin: true` in JWT) can access admin routes
 
 ## How It Works
 
@@ -81,6 +104,7 @@ The deployment uses:
    - Serves static frontend files on root path `/`
    - Serves API routes on `/api/*`
    - Handles SPA routing (all non-API routes → index.html)
+   - Validates JWT tokens from Auth Hub
 
 ## Troubleshooting
 
@@ -98,6 +122,12 @@ GET /health
 Ensure `DATABASE_URL` is set:
 ```bash
 railway vars
+```
+
+### Auth issues
+Ensure `JWT_SECRET` matches the Auth Hub's secret:
+```bash
+railway vars set JWT_SECRET=your_secret
 ```
 
 ### Build fails
