@@ -92,6 +92,8 @@ app.get('/api/me', requireApiAuth, async (req, res) => {
     // Fetch user + agent name from database
     let dbUser = null;
     let agentName = null;
+    let profilePic = null;
+    
     try {
       // Get user with linked agent info
       const userResult = await db.query(
@@ -106,6 +108,13 @@ app.get('/api/me', requireApiAuth, async (req, res) => {
       if (userResult.rows.length > 0) {
         dbUser = userResult.rows[0];
         agentName = dbUser.agent_name;
+        
+        // Fix profile picture URL - add https: if starts with //
+        if (dbUser.profile_picture) {
+          profilePic = dbUser.profile_picture.startsWith('//') 
+            ? 'https:' + dbUser.profile_picture 
+            : dbUser.profile_picture;
+        }
       }
     } catch (dbError) {
       console.log('DB query error:', dbError.message);
@@ -120,8 +129,8 @@ app.get('/api/me', requireApiAuth, async (req, res) => {
       email: jwtUser.email || dbUser?.email || null,
       role: jwtUser.role || null,
       isAdmin: jwtUser.isAdmin || false,
-      // Profile picture from user table
-      profile_picture: dbUser?.profile_picture || null,
+      // Profile picture with fixed URL
+      profile_picture: profilePic,
       access_level: dbUser?.access_level || null
     };
     
